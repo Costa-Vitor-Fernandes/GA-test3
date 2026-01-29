@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [opened, edited, synchronize]
 
+# 🔥 Permissões essenciais para o bot comentar
 permissions:
   pull-requests: write
   contents: read
@@ -18,38 +19,67 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Checkout do código para analisar o histórico de tags
+      # 2. Checkout para pegar as tags existentes
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 3. Calcula a próxima versão baseada no histórico e no PR atual
-      - name: Predict Next Version
-        id: version_preview
-        run: |
-          # Instalando uma ferramenta leve de Conventional Commits
-          npm install -g conventional-changelog-conventionalcommits conventional-recommended-bump
-          
-          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          BUMP_TYPE=$(npx conventional-recommended-bump -p conventionalcommits)
-          
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
-          
-          # Lógica simples de incremento para o comentário
-          # Nota: Em um ambiente real, você pode usar scripts mais robustos de semver
-          echo "next_version=Calculando via $BUMP_TYPE..." >> $GITHUB_OUTPUT
+      # 3. Calcula a versão nova usando Javascript (Node)
+      # Mais seguro que Bash para matemática de versão
+      - name: Calculate Next Version
+        id: calc_version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const semver = require('semver');
+            const { execSync } = require('child_process');
 
-      # 4. Comenta no PR (ou atualiza o anterior)
+            // 1. Pegar a última tag (ou v0.0.0 se não existir)
+            let lastTag = 'v0.0.0';
+            try {
+              lastTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf-8' }).trim();
+            } catch (e) {
+              console.log('Nenhuma tag encontrada, iniciando em v0.0.0');
+            }
+            
+            // Limpa o 'v' se existir para o cálculo
+            const cleanVersion = lastTag.replace(/^v/, '');
+            
+            // 2. Analisar o Título do PR
+            const prTitle = context.payload.pull_request.title;
+            let bumpType = 'patch'; // Default para fix ou outros
+
+            // Lógica de Conventional Commits no Título
+            if (prTitle.includes('!') || prTitle.includes('BREAKING CHANGE')) {
+              bumpType = 'major';
+            } else if (prTitle.startsWith('feat')) {
+              bumpType = 'minor';
+            }
+            
+            // 3. Calcular a nova versão
+            const nextVersion = semver.inc(cleanVersion, bumpType);
+            
+            console.log(`Versão Atual: ${lastTag}`);
+            console.log(`Tipo de Bump: ${bumpType}`);
+            console.log(`Próxima Versão: v${nextVersion}`);
+
+            // Exportar para os próximos steps
+            core.setOutput('current_version', lastTag);
+            core.setOutput('bump_type', bumpType);
+            core.setOutput('next_version', `v${nextVersion}`);
+
+      # 4. Comenta no PR (Atualiza se já existir)
       - name: Comment PR Version Preview
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### 🚀 Previsão de Release
-            Baseado no título do seu PR, a próxima versão será um **${{ steps.version_preview.outputs.bump_type }}**.
-            Versão atual: `${{ steps.version_preview.outputs.current_version }}`
+            ### 🔮 Previsão de Versão
             
-            > [!TIP]
-            > Mantenha o padrão Conventional Commits para garantir o versionamento semântico correto.
-          comment_tag: version_preview_comment
+            | Atual | Mudança Detectada | **Nova Versão Prevista** |
+            | :---: | :---: | :---: |
+            | `${{ steps.calc_version.outputs.current_version }}` | **${{ steps.calc_version.outputs.bump_type }}** | # **${{ steps.calc_version.outputs.next_version }}** # |
+            
+            > **Nota:** A versão é calculada baseada no título: `"${{ github.event.pull_request.title }}"`.
+            > Se o cálculo parecer errado, verifique se o título segue o padrão [Conventional Commits](https://www.conventionalcommits.org/).
+          comment_tag: version_preview

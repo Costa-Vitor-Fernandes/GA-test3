@@ -25,61 +25,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 3. Calcula a versão nova usando Javascript (Node)
-      # Mais seguro que Bash para matemática de versão
+      # 3. Executa o seu script customizado
       - name: Calculate Next Version
-        id: calc_version
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const semver = require('semver');
-            const { execSync } = require('child_process');
-
-            // 1. Pegar a última tag (ou v0.0.0 se não existir)
-            let lastTag = 'v0.0.0';
-            try {
-              lastTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf-8' }).trim();
-            } catch (e) {
-              console.log('Nenhuma tag encontrada, iniciando em v0.0.0');
-            }
-            
-            // Limpa o 'v' se existir para o cálculo
-            const cleanVersion = lastTag.replace(/^v/, '');
-            
-            // 2. Analisar o Título do PR
-            const prTitle = context.payload.pull_request.title;
-            let bumpType = 'patch'; // Default para fix ou outros
-
-            // Lógica de Conventional Commits no Título
-            if (prTitle.includes('!') || prTitle.includes('BREAKING CHANGE')) {
-              bumpType = 'major';
-            } else if (prTitle.startsWith('feat')) {
-              bumpType = 'minor';
-            }
-            
-            // 3. Calcular a nova versão
-            const nextVersion = semver.inc(cleanVersion, bumpType);
-            
-            console.log(`Versão Atual: ${lastTag}`);
-            console.log(`Tipo de Bump: ${bumpType}`);
-            console.log(`Próxima Versão: v${nextVersion}`);
-
-            // Exportar para os próximos steps
-            core.setOutput('current_version', lastTag);
-            core.setOutput('bump_type', bumpType);
-            core.setOutput('next_version', `v${nextVersion}`);
+        id: versioning # Definimos um ID para capturar a saída depois
+        run: |
+          # Aqui você executa seu script. 
+          # Exemplo: ele deve dar um echo da versão formatada para o GitHub Output
+          chmod +x ./scripts/ci/get-next-version.sh
+          NEXT_VER=$(./scripts/ci/get-next-version.sh)
+          CURRENT_VER=$(git describe --tags --abbrev=0 || echo "0.0.0")
+          
+          # Salvando as variáveis para os próximos steps
+          echo "current_version=$CURRENT_VER" >> $GITHUB_OUTPUT
+          echo "next_version=$NEXT_VER" >> $GITHUB_OUTPUT
 
       # 4. Comenta no PR (Atualiza se já existir)
-      - name: Comment PR Version Preview
+      - name: Comment PR with Version Preview
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            ### 🔮 Previsão de Versão
+            ## 🚀 Version Preview
+            Analisei seu PR e aqui está o impacto previsto:
             
-            | Atual | Mudança Detectada | **Nova Versão Prevista** |
-            | :---: | :---: | :---: |
-            | `${{ steps.calc_version.outputs.current_version }}` | **${{ steps.calc_version.outputs.bump_type }}** | # **${{ steps.calc_version.outputs.next_version }}** # |
+            - **Versão Atual:** `${{ steps.versioning.outputs.current_version }}`
+            - **Próxima Versão:** `${{ steps.versioning.outputs.next_version }}`
             
-            > **Nota:** A versão é calculada baseada no título: `"${{ github.event.pull_request.title }}"`.
-            > Se o cálculo parecer errado, verifique se o título segue o padrão [Conventional Commits](https://www.conventionalcommits.org/).
-          comment_tag: version_preview
+            _Este comentário foi gerado automaticamente pelo seu Pipeline de CI._
+          comment_tag: version_preview 
+          # Evita flood; ele edita o mesmo comentário se o PR atualizar

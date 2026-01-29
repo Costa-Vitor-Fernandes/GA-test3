@@ -1,60 +1,51 @@
-name: Conventional Commits PR Validation
+name: PR Quality & Version Preview
 
 on:
   pull_request:
-    types: [opened, reopened, edited, synchronize]
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+    types: [opened, edited, synchronize]
 
 jobs:
-  validate-commits:
-    name: Validate Conventional Commits
+  validate-and-preview:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
+      # 1. Valida se o título segue o padrão Conventional Commits
+      - name: Validate PR Title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Checkout do código para analisar o histórico de tags
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install dependencies
+      # 3. Calcula a próxima versão baseada no histórico e no PR atual
+      - name: Predict Next Version
+        id: version_preview
         run: |
-          npm install --save-dev \
-            @commitlint/cli@18.4.3 \
-            @commitlint/config-conventional@18.4.3 \
-            conventional-changelog-conventionalcommits@7.0.2 \
-            conventional-recommended-bump@9.0.0 \
-            semver@7.5.4
+          # Instalando uma ferramenta leve de Conventional Commits
+          npm install -g conventional-changelog-conventionalcommits conventional-recommend-bump
+          
+          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          BUMP_TYPE=$(npx conventional-recommend-bump -p conventionalcommits)
+          
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          
+          # Lógica simples de incremento para o comentário
+          # Nota: Em um ambiente real, você pode usar scripts mais robustos de semver
+          echo "next_version=Calculando via $BUMP_TYPE..." >> $GITHUB_OUTPUT
 
-      - name: Validate PR title
-        run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          echo "Validating PR Title: $PR_TITLE"
-          echo "$PR_TITLE" | npx commitlint --config ./scripts/ci/commitlint.config.js --verbose
-
-      - name: Calculate next version
-        id: version
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: node ./scripts/ci/calculate-version.js
-
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        env:
-          CURRENT_VERSION: ${{ steps.version.outputs.current }}
-          NEXT_VERSION: ${{ steps.version.outputs.next }}
-          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
-          HAS_BREAKING: ${{ steps.version.outputs.breaking }}
+      # 4. Comenta no PR (ou atualiza o anterior)
+      - name: Comment PR Version Preview
+        uses: thollander/actions-comment-pull-request@v2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const script = require('./scripts/ci/pr-impact-comment.js');
-            await script({ github, context });
+          message: |
+            ### 🚀 Previsão de Release
+            Baseado no título do seu PR, a próxima versão será um **${{ steps.version_preview.outputs.bump_type }}**.
+            Versão atual: `${{ steps.version_preview.outputs.current_version }}`
+            
+            > [!TIP]
+            > Mantenha o padrão Conventional Commits para garantir o versionamento semântico correto.
+          comment_tag: version_preview_comment

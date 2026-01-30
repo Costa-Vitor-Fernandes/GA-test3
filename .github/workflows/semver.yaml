@@ -51,13 +51,13 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd scripts/ci
+          cd ./scripts/ci
           npm install --production
       
       - name: Calculate Next Version
         id: version
         run: |
-          cd scripts/ci
+          cd ./scripts/ci
           node calculate-version.js
         env:
           BASE_TAG: v0.0.1

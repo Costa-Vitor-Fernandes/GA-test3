@@ -1,55 +1,64 @@
-name: PR Quality & Version Preview
+name: Conventional Commits PR Validation
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, reopened, edited, synchronize]
 
-# 🔥 Permissões essenciais para o bot comentar
 permissions:
-  pull-requests: write
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
-  validate-and-preview:
+  validate-commits:
+    name: Validate Conventional Commits
     runs-on: ubuntu-latest
+    
     steps:
-      # 1. Valida se o título segue o padrão Conventional Commits
-      - name: Validate PR Title
-        uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 2. Checkout para pegar as tags existentes
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 3. Executa o seu script customizado
-      - name: Calculate Next Version
-        id: versioning # Definimos um ID para capturar a saída depois
-        run: |
-          # Aqui você executa seu script. 
-          # Exemplo: ele deve dar um echo da versão formatada para o GitHub Output
-          chmod +x ./scripts/ci/get-next-version.sh
-          NEXT_VER=$(./scripts/ci/get-next-version.sh)
-          CURRENT_VER=$(git describe --tags --abbrev=0 || echo "0.0.0")
-          
-          # Salvando as variáveis para os próximos steps
-          echo "current_version=$CURRENT_VER" >> $GITHUB_OUTPUT
-          echo "next_version=$NEXT_VER" >> $GITHUB_OUTPUT
-
-      # 4. Comenta no PR (Atualiza se já existir)
-      - name: Comment PR with Version Preview
-        uses: thollander/actions-comment-pull-request@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          message: |
-            ## 🚀 Version Preview
-            Analisei seu PR e aqui está o impacto previsto:
-            
-            - **Versão Atual:** `${{ steps.versioning.outputs.current_version }}`
-            - **Próxima Versão:** `${{ steps.versioning.outputs.next_version }}`
-            
-            _Este comentário foi gerado automaticamente pelo seu Pipeline de CI._
-          comment_tag: version_preview 
-          # Evita flood; ele edita o mesmo comentário se o PR atualizar
+          node-version: '24'
+
+      - name: Install dependencies
+        run: |
+          npm install --save-dev \
+            @commitlint/cli@18.4.3 \
+            @commitlint/config-conventional@18.4.3 \
+            conventional-changelog-conventionalcommits@7.0.2 \
+            conventional-recommended-bump@9.0.0 \
+            semver@7.5.4
+
+      - name: Validate PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "Validating PR Title: $PR_TITLE"
+          echo "$PR_TITLE" | npx commitlint --config ./scripts/ci/commitlint.config.js --verbose
+            if ! echo "$PR_TITLE" | npx commitlint --verbose; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ Título do PR está fora do padrão!"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Calculate next version
+        id: version
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node ./scripts/ci/calculate-version.js
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        env:
+          CURRENT_VERSION: ${{ steps.version.outputs.current }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
+          HAS_BREAKING: ${{ steps.version.outputs.breaking }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const script = require('./scripts/ci/pr-impact-comment.js');
+            await script({ github, context });

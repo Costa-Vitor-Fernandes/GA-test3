@@ -2,7 +2,10 @@ import semver from 'semver';
 import { execSync } from 'child_process';
 import fs from 'fs';
 
-const baseTag = process.env.BASE_TAG || 'v0.0.1';
+// BASE_TAG: commit hash or tag reference (e.g., "739431593c8d52063b1f757975c0d47fc12007f9" or "v0.0.1")
+// BASE_VERSION: the semantic version at that tag/commit (e.g., "0.0.1")
+const baseTag = process.env.BASE_TAG || '739431593c8d52063b1f757975c0d47fc12007f9';
+const baseVersion = process.env.BASE_VERSION || '0.0.1';
 
 function getCommitsFromTag() {
   try {
@@ -67,11 +70,10 @@ function determineVersionBump(commits) {
 }
 
 function getCurrentVersion() {
-  const version = baseTag.replace(/^v/, '');
-  if (!semver.valid(version)) {
-    throw new Error(`Invalid semver version: ${baseTag}`);
+  if (!semver.valid(baseVersion)) {
+    throw new Error(`Invalid semver BASE_VERSION: ${baseVersion}`);
   }
-  return version;
+  return baseVersion;
 }
 
 function main() {

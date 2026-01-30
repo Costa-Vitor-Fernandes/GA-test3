@@ -1,52 +1,62 @@
-name: Conventional Commits & SemVer
+name: Conventional Commits Validation
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, reopened, edited, synchronize]
 
-env:
-  BASE_COMMIT: "4a014cc05f3b3943bedbe1a93ec1bc82f700df5f"  # ex: commit dia zero "a1b2c3d"
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
-  check:
+  validate-commits:
+    name: Validate Conventional Commits
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
     
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Validar título do PR
-        uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Calcular versão prevista
-        id: calc
-        run: python3 scripts/ci/calculate_version.py
-        env:
-          BASE_COMMIT: ${{ env.BASE_COMMIT }}
-
-      - name: Comentar versão no PR
-        uses: peter-evans/create-or-update-comment@v4
+      
+      - uses: actions/setup-node@v4
         with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            <!-- SEMVER_PREVIEW -->
-            ## 🔮 Previsão de Versão
-            
-            **Próxima versão:** `v${{ steps.calc.outputs.next_version }}`
-            
-            | Tipo | Impacto |
-            |------|---------|
-            | Breaking | ${{ steps.calc.outputs.has_breaking == 'true' && '⚠️ Sim' || '✅ Não' }} |
-            | Features | ${{ steps.calc.outputs.has_feat == 'true' && '✨ Sim' || '✅ Não' }} |
-            | Fixes | ${{ steps.calc.outputs.has_fix == 'true' && '🐛 Sim' || '✅ Não' }} |
-            
-            > Referência: `${{ env.BASE_COMMIT }}` (v0.0.0)
-          edit-mode: replace
-          comment-author: github-actions[bot]
-          body-includes: '<!-- SEMVER_PREVIEW -->'
+          node-version: '20'
+      
+      - run: |
+          npm install --save-dev \
+            @commitlint/cli@18.4.3 \
+            @commitlint/config-conventional@18.4.3 \
+            conventional-recommended-bump@9.0.0 \
+            semver@7.5.4
+
+      - name: Validate PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "Validating PR Title: $PR_TITLE"
+          
+          if ! echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js --verbose; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ Título do PR está fora do padrão!"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            exit 1
+          fi
+
+      - name: Calculate next version
+        id: version
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node ./scripts/ci/calculate-version.js
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        env:
+          CURRENT_VERSION: ${{ steps.version.outputs.current }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
+          HAS_BREAKING: ${{ steps.version.outputs.breaking }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const script = require('./scripts/ci/pr-impact-comment.js');
+            await script({ github, context });

@@ -28,7 +28,12 @@ jobs:
       - name: Install dependencies
         run: |
           # Instalando uma ferramenta leve de Conventional Commits
-          npm install -g conventional-changelog-conventionalcommits commitlint@20.3.1 conventional-recommended-bump
+          npm install --save-dev \
+            @commitlint/cli@18.4.3 \
+            @commitlint/config-conventional@18.4.3 \
+            conventional-changelog-conventionalcommits@7.0.2 \
+            conventional-recommended-bump@9.0.0 \
+            semver@7.5.4
           
           CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           BUMP_TYPE=$(npx conventional-recommended-bump -p conventionalcommits)

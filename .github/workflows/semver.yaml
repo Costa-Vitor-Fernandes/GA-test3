@@ -28,10 +28,10 @@ jobs:
       - name: Install dependencies
         run: |
           # Instalando uma ferramenta leve de Conventional Commits
-          npm install -g conventional-changelog-conventionalcommits conventional-recommend-bump
+          npm install -g conventional-changelog-conventionalcommits conventional-recommended-bump
           
           CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          BUMP_TYPE=$(npx conventional-recommend-bump -p conventionalcommits)
+          BUMP_TYPE=$(npx conventional-recommended-bump -p conventionalcommits)
           
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT

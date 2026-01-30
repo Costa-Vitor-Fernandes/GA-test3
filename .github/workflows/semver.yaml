@@ -40,7 +40,7 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
-        if: always() && (steps.amannn.outputs.error_message != null)
+        #if: always() && (steps.amannn.outputs.error_message != null)
         with:
           fetch-depth: 0
       

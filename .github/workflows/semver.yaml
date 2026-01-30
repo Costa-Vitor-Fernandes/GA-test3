@@ -1,6 +1,6 @@
 name: PR Quality & Version Preview
 
-on:
+on: 
   pull_request:
     types: [opened, edited, synchronize]
 

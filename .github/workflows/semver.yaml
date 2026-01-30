@@ -20,9 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 3. Calcula a próxima versão baseada no histórico e no PR atual
-      - name: Predict Next Version
-        id: version_preview
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
         run: |
           # Instalando uma ferramenta leve de Conventional Commits
           npm install -g conventional-changelog-conventionalcommits conventional-recommend-bump
@@ -37,9 +40,31 @@ jobs:
           # Nota: Em um ambiente real, você pode usar scripts mais robustos de semver
           echo "next_version=Calculando via $BUMP_TYPE..." >> $GITHUB_OUTPUT
 
-      # 4. Comenta no PR (ou atualiza o anterior)
-      - name: Comment PR Version Preview
-        uses: thollander/actions-comment-pull-request@v2
+      - name: Validate PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "Validating PR Title: $PR_TITLE"
+          echo "$PR_TITLE" | npx commitlint --config ./scripts/ci/commitlint.config.js --verbose
+            if ! echo "$PR_TITLE" | npx commitlint --verbose; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ Título do PR está fora do padrão!"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            exit 1
+            fi
+
+      - name: Calculate next version
+        id: version
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node ./scripts/ci/calculate-version.js
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        env:
+          CURRENT_VERSION: ${{ steps.version.outputs.current }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
+          HAS_BREAKING: ${{ steps.version.outputs.breaking }}
         with:
           message: |
             ### 🚀 Previsão de Release

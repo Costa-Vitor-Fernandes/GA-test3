@@ -62,7 +62,9 @@ jobs:
           cd ./scripts/ci
           node calculate-version.js
         env:
-          BASE_TAG: v0.0.1
+          # Hash of the commit tagged as v0.0.1 (GitHub Release Tag)
+          BASE_TAG: 739431593c8d52063b1f757975c0d47fc12007f9
+          BASE_VERSION: 0.0.1
       
       - name: Comment PR with Version
         uses: peter-evans/create-or-update-comment@v4

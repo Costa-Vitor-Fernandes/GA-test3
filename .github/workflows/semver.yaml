@@ -57,6 +57,9 @@ jobs:
       - name: Calculate Next Version
         id: version
         run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing root contents:"
+          ls -R
           cd ./scripts/ci
           node calculate-version.js
         env:

@@ -3,6 +3,10 @@ name: PR Quality & Version Preview
 on: 
   pull_request:
     types: [opened, edited, synchronize]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   validate-and-preview:

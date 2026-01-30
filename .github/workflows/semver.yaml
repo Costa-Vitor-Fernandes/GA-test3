@@ -5,7 +5,7 @@ on:
     types: [opened, edited, synchronize]
 
 env:
-  BASE_COMMIT: "SUBSTITUA_AQUI_PELO_HASH_DO_DIA_0"  # ex: "a1b2c3d"
+  BASE_COMMIT: "4a014cc05f3b3943bedbe1a93ec1bc82f700df5f"  # ex: commit dia zero "a1b2c3d"
 
 jobs:
   check:

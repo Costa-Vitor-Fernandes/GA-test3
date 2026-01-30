@@ -35,7 +35,7 @@ jobs:
           PR_TITLE="${{ github.event.pull_request.title }}"
           echo "Validating PR Title: $PR_TITLE"
           
-          if ! echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js --verbose; then
+          if ! echo "$PR_TITLE" | npx commitlint --config ./scripts/ci/commitlint.config.js --verbose; then
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "❌ Título do PR está fora do padrão!"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

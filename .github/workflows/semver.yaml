@@ -33,9 +33,9 @@ jobs:
             chore
             revert
           requireScope: false
-          subjectPattern: ^[A-Z].+$
-          subjectPatternError: |
-            The subject should start with an uppercase character.
+          #subjectPattern: ^[A-Z].+$
+          #subjectPatternError: |
+          #The subject should start with an uppercase character.
           validateSingleCommit: false
 
       - name: Checkout code

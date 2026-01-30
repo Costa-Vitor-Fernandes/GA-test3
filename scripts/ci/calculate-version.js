@@ -1,41 +1,120 @@
-const conventionalRecommendedBump = require('conventional-recommended-bump');
-const semver = require('semver');
-const { execSync } = require('child_process');
-const fs = require('fs');
+import semver from 'semver';
+import { execSync } from 'child_process';
+import fs from 'fs';
 
-async function calculateVersion() {
+const baseTag = process.env.BASE_TAG || 'v0.0.1';
+
+function getCommitsFromTag() {
   try {
-    let currentVersion = '0.0.0';
-    try {
-      const latestTag = execSync('git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"')
-        .toString().trim().replace(/^v/, '');
-      currentVersion = semver.valid(latestTag) || '0.0.0';
-    } catch (e) {
-      console.log('No tags found, defaulting to 0.0.0');
+    const commits = execSync(`git log ${baseTag}..HEAD --format=%H||%s||%b####`, { encoding: 'utf-8' })
+      .trim()
+      .split('####')
+      .filter(Boolean)
+      .map(commit => {
+        const [hash, subject, body] = commit.split('||');
+        return {
+          sha: hash.trim(),
+          message: `${subject}\n${body || ''}`.trim()
+        };
+      });
+    return commits;
+  } catch (error) {
+    console.error('Error getting commits from git:', error.message);
+    return [];
+  }
+}
+
+function analyzeCommitMessage(message) {
+  const firstLine = message.split('\n')[0];
+  
+  const types = ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert'];
+  const typeMatch = types.find(type => firstLine.startsWith(`${type}:`) || firstLine.startsWith(`${type}(`));
+  
+  if (!typeMatch) {
+    return { valid: false, type: null, breaking: false };
+  }
+
+  const hasExclamation = firstLine.includes('!:');
+  const hasBreakingFooter = message.includes('BREAKING CHANGE:');
+  const breaking = hasExclamation || hasBreakingFooter;
+
+  return { valid: true, type: typeMatch, breaking };
+}
+
+function determineVersionBump(commits) {
+  let bump = 'patch';
+  const invalidCommits = [];
+
+  for (const commit of commits) {
+    const analysis = analyzeCommitMessage(commit.message);
+
+    if (!analysis.valid) {
+      invalidCommits.push({
+        sha: commit.sha.substring(0, 7),
+        message: commit.message.split('\n')[0]
+      });
+      continue;
     }
 
-    const result = await conventionalRecommendedBump({
-      preset: 'conventionalcommits',
-      tagPrefix: 'v'
-    });
+    if (analysis.breaking) {
+      bump = 'major';
+    } else if (analysis.type === 'feat' && bump !== 'major') {
+      bump = 'minor';
+    }
+  }
 
-    const releaseType = result.releaseType;
-    const newVersion = semver.inc(currentVersion, releaseType);
+  return { bump, invalidCommits };
+}
+
+function getCurrentVersion() {
+  const version = baseTag.replace(/^v/, '');
+  if (!semver.valid(version)) {
+    throw new Error(`Invalid semver version: ${baseTag}`);
+  }
+  return version;
+}
+
+function main() {
+  try {
+    const commits = getCommitsFromTag();
     
-    // Check for breaking changes in the diff
-    const baseRef = process.env.BASE_REF || 'main';
-    const commits = execSync(`git log origin/${baseRef}..HEAD --format=%B`).toString();
-    const hasBreakingChange = commits.includes('BREAKING CHANGE:') || commits.includes('!:');
+    if (commits.length === 0) {
+      const comment = '⚠️ Nenhum commit encontrado neste Pull Request.';
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `comment=${comment}\n`);
+      return;
+    }
 
-    // Output to GitHub Actions
-    const output = `current=${currentVersion}\nnext=${newVersion}\nrelease_type=${releaseType}\nbreaking=${hasBreakingChange}\n`;
-    fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
+    const { bump, invalidCommits } = determineVersionBump(commits);
 
-    console.log(`Summary: ${currentVersion} -> ${newVersion} (${releaseType})`);
+    if (invalidCommits.length > 0) {
+      const commitList = invalidCommits
+        .map(c => `- \`${c.sha}\`: ${c.message}`)
+        .join('\n');
+      
+      const comment = `❌ **Commits inválidos detectados**\n\nOs seguintes commits não seguem o padrão Conventional Commits:\n\n${commitList}\n\n📖 Consulte: https://www.conventionalcommits.org/`;
+      
+      console.error('Invalid commits found:', invalidCommits);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `comment=${comment}\n`);
+      process.exit(1);
+    }
+
+    const currentVersion = getCurrentVersion();
+    const nextVersion = semver.inc(currentVersion, bump);
+    const impact = { major: 'Major', minor: 'Minor', patch: 'Patch' }[bump];
+
+    const comment = `✅ **Previsão de Versão**\n\nOi! Este PR vai gerar a versão **v${nextVersion}**.\n\n📊 **Impacto:** ${impact}\n📌 Estávamos na **v${currentVersion}** e vamos para **v${nextVersion}**`;
+
+    console.log(`Current version: v${currentVersion}`);
+    console.log(`Next version: v${nextVersion}`);
+    console.log(`Bump type: ${bump}`);
+    
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `comment=${comment}\n`);
   } catch (error) {
-    console.error('Error calculating version:', error);
+    console.error('Error in main execution:', error);
+    const comment = `❌ **Erro ao calcular versão**\n\n${error.message}`;
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `comment=${comment}\n`);
     process.exit(1);
   }
 }
 
-calculateVersion();
+main();

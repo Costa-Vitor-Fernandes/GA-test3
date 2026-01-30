@@ -51,6 +51,9 @@ jobs:
       
       - name: Install dependencies
         run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing root contents:"
+          ls -R
           cd ./scripts/ci
           npm install --production
       
